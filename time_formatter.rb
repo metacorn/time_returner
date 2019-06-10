@@ -32,7 +32,7 @@ class TimeFormatter
   end
 
   def valid?
-    @invalid_formats.empty?
+    @valid_formats.any? && @invalid_formats.empty?
   end
 
   def invalid
