@@ -35,10 +35,6 @@ class TimeFormatter
     @invalid_formats.empty?
   end
 
-  def valid
-    @valid_formats
-  end
-
   def invalid
     @invalid_formats
   end
