@@ -1,22 +1,19 @@
 require 'rack'
 require 'byebug'
+require_relative 'time_formatter'
 
 class TimeReturner
+
   TRAILING_SLASHES_PATTERN = /\/+$/
-  VALID_QUERY_PATTERN = /^(format=)/
-  VALID_FORMATS = ["year", "month", "day", "hour", "minute", "second"]
+  VALID_QUERY_PATTERN = /^(format=)/  
 
   def call(env)
-    method = env["REQUEST_METHOD"]
-    path_info = env["PATH_INFO"]
-    query_string = env["QUERY_STRING"]
+    @request = Rack::Request.new(env)    
 
-    @status = 404
-    @header = { 'Content-Type' => 'text/plain' }
-    @body = ["Resource not found.\n"]
-
-    if method == "GET" && is_time?(path_info)
-      handle_query(query_string)
+    if time_request?(@request)
+      time_response      
+    else
+      not_time_response      
     end
 
     [@status, @header, @body]
@@ -24,60 +21,55 @@ class TimeReturner
 
   private
 
-  def is_time?(path_info)
-    path_info.sub(TRAILING_SLASHES_PATTERN, "") == "/time"
+  def time_request?(request)
+    @request.env["REQUEST_METHOD"] == "GET" && request.env["PATH_INFO"].sub(TRAILING_SLASHES_PATTERN, "") == "/time"
   end
 
-  def handle_query(query_string)
-    if VALID_QUERY_PATTERN.match?(query_string)
-      parameters_string = query_string.sub(VALID_QUERY_PATTERN, "")
-      handle_parameters(parameters_string)
+  def time_response
+    if VALID_QUERY_PATTERN.match?(@request.env["QUERY_STRING"])
+      @parameters_string = @request.env["QUERY_STRING"].sub(VALID_QUERY_PATTERN, "")
+      valid_parameters_response
     else
-      @status = 400
-      @body = ["Invalid request parameter. Must match pattern '/time?format=... Valid formats are: #{VALID_FORMATS.join(", ")}.\n"]
+      invalid_parameters_response
     end    
   end
 
-  def handle_parameters(parameters_string)    
-    formats = parameters_string.split(/\W+/)
-    sort_formats(formats)
-  end
-
-  def sort_formats(formats)
-    valid_formats = []
-    invalid_formats = []
-    formats.each do |f|
-      if VALID_FORMATS.include?(f)
-        valid_formats << f
-      else
-        invalid_formats << f
-      end
-    end
-    handle_formats(valid_formats, invalid_formats)
-  end
-
-  def handle_formats(valid_formats, invalid_formats)
-    if invalid_formats.any?
-      @status = 400
-      @body = ["Unknown time formats: #{invalid_formats.join(", ")}.\n"]
-    elsif valid_formats.any?
-      handle_valid_formats(valid_formats)
+  def valid_parameters_response
+    @formats = TimeFormatter.new(@parameters_string)
+    if !@formats.valid?
+      invalid_formats_response
     else
-      @status = 400
-      @body = ["There are no readable formats. Valid ones are: #{VALID_FORMATS.join(", ")}.\n"]
-    end 
+      valid_formats_response
+    end
   end
 
-  def handle_valid_formats(valid_formats)
-    time = Time.now
-    body_content = []
-    valid_formats.map { |vf| vf == "minute" ? "min" : vf }
-    valid_formats.map { |vf| vf == "second" ? "sec" : vf }
-    valid_formats.each { |vf| body_content << time.instance_eval(vf) }
-    body_content = body_content.join("-")
-    body_content += "\n"
+  def valid_formats_response
+    body_content = @formats.get_body_content    
     @status = 200
+    @header = { 'Content-Type' => 'text/plain' }
     @body = [body_content]
   end
-  
+
+  def not_time_response
+    @status = 404
+    @header = { 'Content-Type' => 'text/plain' }
+    @body = ["Resource not found.\n"]
+  end
+
+  def invalid_parameters_response
+    @status = 400
+    @header = { 'Content-Type' => 'text/plain' }
+    @body = ["Invalid request parameter. Must match pattern '/time?format=... Valid formats are: #{VALID_FORMATS.join(", ")}.\n"]
+  end
+
+  def invalid_formats_response
+    @status = 400
+    @header = { 'Content-Type' => 'text/plain' }
+    if @formats.invalid.any?
+      @body = ["Unknown time formats: #{@formats.invalid.join(", ")}.\n"]
+    else
+      @body = ["There are no readable formats. Valid ones are: #{VALID_FORMATS.join(", ")}.\n"]
+    end
+  end
+
 end
